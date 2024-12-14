@@ -1,0 +1,121 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  creationTimestamp: null
+  labels:
+    app: webapp
+  name: webapp
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: webapp
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: webapp
+    spec:
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000    
+      initContainers:
+      - name: wait-for-mysql
+        image: busybox
+        command:
+          - sh
+          - -c
+          - >
+            until nc -z -v -w30 mysql.default.svc.cluster.local 3306;
+            do
+              echo "Waiting for MySQL...";
+              sleep 5;
+            done;
+            echo "MySQL is up!";
+      containers:
+      - image: prasanth98/sample-python-webapp-lc:2.0.0
+        ports:
+          - containerPort: 5000
+        livenessProbe:
+          exec:
+            command:
+              - "sh"
+              - "-c"
+              - "curl -f http://localhost:5000/healthz || exit 1"
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          exec:
+            command:
+              - "sh"
+              - "-c"
+              - "curl -f http://localhost:5000/healthz || exit 1"
+          initialDelaySeconds: 5
+          periodSeconds: 10          
+        imagePullPolicy: Always
+        name: simple-python-app
+        env:
+          - name: DB_HOST
+            value: "mysql.default.svc.cluster.local"
+          - name: DB_PORT
+            value: "3306"
+          - name: DB_USER
+            value: "root"
+          - name: DB_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: mysql-secrets
+                key: DB_PASSWORD
+          - name: DB_NAME
+            value: "locodb"         
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "1Gi"
+            cpu: "1"
+status: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: webapp-service
+  namespace: default
+spec:
+  selector:
+    app: webapp
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 5000
+  type: NodePort
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: webapp
+spec:
+  minAvailable: 3
+  selector:
+    matchLabels:
+      app: webapp
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  creationTimestamp: null
+  name: webapp
+spec:
+  maxReplicas: 5
+  minReplicas: 3
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: webapp
+  targetCPUUtilizationPercentage: 60
