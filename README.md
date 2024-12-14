@@ -39,7 +39,7 @@ This application will be deployed on a Minikube Kubernetes cluster, which provid
 Execute the following command to install dependencies and start the application:
 
 ```sh
-	sh ./install.sh
+sh ./install.sh
 ```
 
 ### Port-forwarding 
@@ -49,7 +49,10 @@ kubectl port-forward svc/webapp-service 80:80
 Visit your browser at http://localhost:80/
 
 ### Cleaning up cluster
+
+```sh
 kubectl delete -f kube-manifests/
 minikube delete
+```
 
 
